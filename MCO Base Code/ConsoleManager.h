@@ -50,6 +50,10 @@ public:
 	void setCursorPosition(int posX, int posY) const;
 	Process* getProcessByName(const std::string& processName) const; 
 
+	std::vector<Process*> getProcessesInMemory() const;
+	int calculateExternalFragmentation(int maxMemory) const;
+	static const int MAX_MEMORY = 16384;
+
 private:
 	ConsoleManager();
 	~ConsoleManager() = default;

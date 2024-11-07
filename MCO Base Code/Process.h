@@ -19,7 +19,7 @@ public:
 
     // Method to increment the current line of instruction
     void incrementLine(int core);
-    
+
     // Getters
     std::string getName() const { return processName; }
     int getID() const { return processID; }
@@ -33,8 +33,20 @@ public:
     // Setter for core
     void setCoreAssigned(int core) { coreAssigned = core; };
 
-    Process* getProcessByName(const std::string& processName) const;
+    //Process* getProcessByName(const std::string& processName) const;
     void processSMI() const;
+
+    // Generate memory snapshot file at quantum cycle
+    static void generateMemorySnapshot(int quantumCycle);
+
+    int getEndAddress() const { return endAddress; }
+    int getStartAddress() const { return startAddress; }
+
+    // Stter for start and end address
+    void setMemoryRange(int start, int end) {
+        startAddress = start;
+        endAddress = end;
+    }
 
 private:
     int processCurCycle;
@@ -50,4 +62,7 @@ private:
 
     // Instance of ScheduleWorker
     //ScheduleWorker* scheduleWorker;
+
+    int startAddress;        // Start memory address of the process
+    int endAddress;          // End memory address of the process
 };

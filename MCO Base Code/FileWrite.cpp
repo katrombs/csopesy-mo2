@@ -1,8 +1,13 @@
 #include "FileWrite.h"
-#include <vector>  // Include this
+#include "Process.h"
+#include <vector> 
 #include <fstream>
 #include <filesystem>
 #include <iostream>
+#include <iomanip>
+#include <ctime>
+#include <vector>
+#include <string>
 
 namespace fs = std::filesystem;
 
@@ -30,4 +35,35 @@ void FileWrite::generateFile(int processID, const std::string& processName, cons
     else {
         std::cerr << "Error: Could not open file " << fileName << std::endl;
     }
+}
+
+std::string getCurrentTimestamp() {
+    time_t currTime;
+    struct tm datetime;
+
+    time(&currTime);
+    localtime_s(&datetime, &currTime);
+    std::ostringstream oss;
+    oss << std::put_time(&datetime, "%m/%d/%Y %I:%M:%S %p");
+    return oss.str();
+}
+
+void FileWrite::generateMemorySnapshot(int quantumCycle, const std::vector<Process*>& processes, int fragmentation) {
+    std::string fileName = "memory_stamp_" + std::to_string(quantumCycle) + ".txt";
+    std::ofstream outFile(fileName);
+
+    // following mock UI
+    outFile << "Timestamp: (" << getCurrentTimestamp() << ")\n";
+    outFile << "Number of processes in memory: " << processes.size() << "\n";
+    outFile << "Total external fragmentation in KB: " << fragmentation / 1024 << "\n";
+    outFile << "\n----end---- = 16384\n";
+
+    for (const auto& process : processes) {
+        outFile << process->getEndAddress() << "\n";     
+        outFile << "P" << process->getID() << "\n"; 
+        outFile << process->getStartAddress() << "\n";   
+    }
+    outFile << "\n----start---- = 0\n";
+
+    outFile.close();
 }

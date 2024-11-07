@@ -1,11 +1,12 @@
 #include "ConsoleManager.h"
 #include "MainConsole.h"
-#include <iostream>
+#include "ScheduleWorker.h"
 #include "BaseScreen.h"
 #include "Process.h"
+#include <iostream>
 #include <thread>
 #include <fstream>
-#include "ScheduleWorker.h"
+#include <algorithm> 
 
 int ScheduleWorker::usedCores = 0;
 int ScheduleWorker::availableCores = 0;
@@ -214,6 +215,36 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 	if (writeToFile) {
 		logFile.close();
 	}
+}
+
+std::vector<Process*> ConsoleManager::getProcessesInMemory() const {
+	return unfinishedProcessList;
+}
+
+int ConsoleManager::calculateExternalFragmentation(int maxMemory) const {
+	int fragmentation = 0;
+	int lastEndAddress = 0;
+
+	// If no processes are loaded, all memory is fragmented
+	if (unfinishedProcessList.empty()) {
+		return maxMemory;  
+	}
+
+	// Sort processes by starting address
+	std::vector<Process*> sortedProcesses = unfinishedProcessList;
+	std::sort(sortedProcesses.begin(), sortedProcesses.end(), [](Process* a, Process* b) {
+		return a->getStartAddress() < b->getStartAddress();
+		});
+
+	// Calculate gaps between processes
+	for (const auto& process : sortedProcesses) {
+		fragmentation += process->getStartAddress() - lastEndAddress;
+		lastEndAddress = process->getEndAddress();
+	}
+
+	// Add remaining space after the last process
+	fragmentation += maxMemory - lastEndAddress;
+	return fragmentation;
 }
 
 ConsoleManager::ConsoleManager() {
