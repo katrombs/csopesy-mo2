@@ -242,6 +242,15 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 	}
 }
 
+int ConsoleManager::getUsedMemory() const {
+	int usedMemory = 0;
+	for (const auto& process : unfinishedProcessList) {
+		usedMemory += process->getMemoryUsage(); 
+	}
+	return usedMemory;
+}
+
+
 ConsoleManager::ConsoleManager() {
 
 	this->running = true;

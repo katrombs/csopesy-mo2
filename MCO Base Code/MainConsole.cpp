@@ -430,6 +430,12 @@ void MainConsole::process() {
             else if (command == "scheduler-stop") {
                 ScheduleWorker::stopTest = true;
             }
+            else if (command == "process-smi") {
+                Process::processSMI();
+            }
+            else if (command == "vmstat") { 
+                // TODO
+            }
             else if (command == "exit") {
                 std::cerr << "Exiting emulator..." << std::endl;
                 ConsoleManager::getInstance()->exitApplication();

@@ -106,17 +106,54 @@ void Process::incrementLine(int core) {
     }
 }
 
-void Process::processSMI() const {
-    std::cout << "Process Name: " << processName << std::endl;
-    std::cout << "ID: " << processID << std::endl;
-    std::cout << "Current Line of Instruction: " << currLineOfInstruction << "/" << totalLineOfInstruction << std::endl;
+//void Process::processSMI() const {
+//    std::cout << "Process Name: " << processName << std::endl;
+//    std::cout << "ID: " << processID << std::endl;
+//    std::cout << "Current Line of Instruction: " << currLineOfInstruction << "/" << totalLineOfInstruction << std::endl;
+//
+//    if (currLineOfInstruction >= totalLineOfInstruction) {
+//        std::cout << "Status: Finished" << std::endl;
+//    }
+//    else {
+//        std::cout << "Status: Running" << std::endl;
+//    }
+//}
 
-    if (currLineOfInstruction >= totalLineOfInstruction) {
-        std::cout << "Status: Finished" << std::endl;
+void Process::processSMI() {
+    ConsoleManager* consoleManager = ConsoleManager::getInstance();
+
+
+    std::cout << "\n--------------------------------------------\n";
+    std::cout << "| PROCESS-SMI V01.00 Driver Version: 01.00 |\n";
+    std::cout << "--------------------------------------------\n";
+
+    int totalCores = MainConsole::totalNumCores;
+    int usedCores = ScheduleWorker::usedCores;
+    int availableCores = ScheduleWorker::availableCores;
+    std::cout << "CPU-Util: " << (usedCores * 100) / totalCores << "%\n";
+    std::cout << "Cores Used: " << usedCores << "\n";
+    std::cout << "Cores Available: " << availableCores << "\n";
+
+    int usedMemory = consoleManager->getUsedMemory();
+    int maxMemory = ConsoleManager::MAX_MEMORY;
+    std::cout << "Memory Usage: " << usedMemory << "MiB / " << maxMemory << "MiB\n";
+    std::cout << "Memory Util: " << (usedMemory * 100) / maxMemory << "%\n";
+
+    std::cout << "-------------------------------------------\n";
+    std::cout << "Running Processes and Memory Usage:\n";
+
+    std::vector<Process*> unfinishedProcesses = consoleManager->getProcessesInMemory();
+    for (const auto& process : unfinishedProcesses) {
+        std::cout << process->getName() << "\t"
+            << process->getMemoryUsage() << "MiB\n"; 
     }
-    else {
-        std::cout << "Status: Running" << std::endl;
-    }
+
+    std::cout << "-------------------------------------------\n";
+}
+
+
+int Process::getMemoryUsage() const {
+    return memoryUsage; 
 }
 
 
