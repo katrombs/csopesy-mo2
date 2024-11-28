@@ -53,7 +53,9 @@ void FileWrite::generateMemorySnapshot(int quantumCycle, const std::vector<Proce
     // following mock UI
     outFile << "Timestamp: (" << getCurrentTimestamp() << ")\n";
     outFile << "Number of processes in memory: " << processes.size() << "\n";
-    outFile << "Total external fragmentation in KB: " << MainConsole::maxOverallMem - (MainConsole::memPerProcess * processes.size()) << "\n";
+    //outFile << "Total external fragmentation in KB: " << MainConsole::maxOverallMem - (MainConsole::memPerProcess * processes.size()) << "\n";
+    outFile << "Total external fragmentation in KB: " << fragmentation << "\n";
+
     outFile << "\n----end---- = " << MainConsole::maxOverallMem << std::endl;
     for (const auto& process : processes) {
         outFile << process->getStartAddress() << "\n";

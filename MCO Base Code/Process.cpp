@@ -15,6 +15,10 @@ long long MainConsole::delaysPerExec = 0;
 int ScheduleWorker::quantumCycleCounter = 0;
 long long Process::busyTime = MainConsole::delaysPerExec;
 
+long long Process::getMemoryUsage() const {
+    return endAddress - startAddress;
+}
+
 Process::Process(const std::string& name, int id, long long totalLines, const std::string& timeCreated, int coreAssigned, long long startAddress, long long endAddress)
     : processName(name), processID(id), totalLineOfInstruction(totalLines),
     currLineOfInstruction(0), timeCreated(timeCreated), coreAssigned(coreAssigned), startAddress(startAddress), endAddress(endAddress) {}
@@ -63,7 +67,16 @@ void Process::incrementLine(int core) {
                             ScheduleWorker::usedCores++;
                             for (int i = 0; i < MainConsole::quantumCycles; i++) {
                                 if (currLineOfInstruction >= totalLineOfInstruction) {
-                                    break;
+                                    //std::lock_guard<std::mutex> lock(ScheduleWorker::schedulerMutex);
+
+                                    ///////////////// PAGING
+                                    ScheduleWorker::cores[coreAssigned] = -1;  // mark the core as available
+                                    ConsoleManager::getInstance()->addFinishedProcess(this);
+
+                                    // Free all pages allocated to this process
+                                    freePages();
+                                    ScheduleWorker::usedCores--;
+                                    /*break*/;
                                 }
                                 else {
                                     currLineOfInstruction++;
@@ -113,17 +126,54 @@ void Process::incrementLine(int core) {
     }
 }
 
-void Process::processSMI() const {
-    std::cout << "Process Name: " << processName << std::endl;
-    std::cout << "ID: " << processID << std::endl;
-    std::cout << "Current Line of Instruction: " << currLineOfInstruction << "/" << totalLineOfInstruction << std::endl;
+void Process::freePages() {
+    for (auto& entry : pageTable) {
+        if (entry.second.valid) {
+            MemoryManager::releaseFrame(entry.second.frameNumber);  // release
+            entry.second.valid = false;  
+        }
+    }
+}
 
-    if (currLineOfInstruction >= totalLineOfInstruction) {
-        std::cout << "Status: Finished" << std::endl;
+
+//void Process::processSMI() const {
+//    std::cout << "Process Name: " << processName << std::endl;
+//    std::cout << "ID: " << processID << std::endl;
+//    std::cout << "Current Line of Instruction: " << currLineOfInstruction << "/" << totalLineOfInstruction << std::endl;
+//
+//    if (currLineOfInstruction >= totalLineOfInstruction) {
+//        std::cout << "Status: Finished" << std::endl;
+//    }
+//    else {
+//        std::cout << "Status: Running" << std::endl;
+//    }
+//}
+
+void Process::processSMI(){
+    ConsoleManager* consoleManager = ConsoleManager::getInstance();
+
+    int usedCores = ScheduleWorker::usedCores;
+    int availableCores = MainConsole::totalNumCores - usedCores;
+
+    int usedMemory = consoleManager->getUsedMemory();
+    int maxMemory = MainConsole::maxOverallMem;
+
+    std::cerr << "\n--------------------------------------------\n";
+    std::cerr << "| PROCESS-SMI V01.00 Driver Version: 01.00 |\n";
+    std::cerr << "--------------------------------------------\n";
+
+    std::cerr << "CPU-Util: " << (usedCores * 100) / MainConsole::totalNumCores << "%\n";
+    std::cerr << "Memory Usage: " << usedMemory << "MiB / " << maxMemory << "MiB\n";
+    std::cerr << "Memory Util: " << (usedMemory * 100) / maxMemory << "%\n";
+
+    std::cerr << "-------------------------------------------\n";
+    std::cerr << "Running Processes and Memory Usage:\n";
+
+    auto unfinishedProcesses = consoleManager->getProcessesInMemory();
+    for (const auto& process : unfinishedProcesses) {
+        std::cerr << process->getName() << "\t" << process->getMemoryUsage() << "MiB\n";
     }
-    else {
-        std::cout << "Status: Running" << std::endl;
-    }
+    std::cerr << "-------------------------------------------\n";
 }
 
 
@@ -140,17 +190,17 @@ void Process::generateMemorySnapshot(int quantumCycle) {
     if (processesInMemory.empty()) {
         std::cout << "No processes in memory during snapshot at quantum cycle " << quantumCycle << "\n";
     }
-    int externalFragmentation = ConsoleManager::getInstance()->calculateExternalFragmentation(ConsoleManager::MAX_MEMORY);
+    int externalFragmentation = ConsoleManager::getInstance()->calculateExternalFragmentation(MainConsole::maxOverallMem);
     FileWrite::generateMemorySnapshot(quantumCycle, processesInMemory, externalFragmentation);
 }
 
-void Process::setMemoryRange(long long start, int memoryBlockLoc) {
+void Process::setMemoryRange(long long start, int memoryBlockLoc, long long memSize) {
 
     if (this != nullptr) {
         this->memoryBlockLoc = memoryBlockLoc;
         storedStartAddress = start;
         startAddress = start;
-        endAddress = (startAddress - MainConsole::memPerProcess);
+        endAddress = startAddress + memSize;
         storedEndAddress = endAddress;
 
         for (int i = 0; i < MemoryManager::memoryBlocks.size(); i++) {

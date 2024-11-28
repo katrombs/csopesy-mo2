@@ -3,19 +3,35 @@
 #include "MemoryManager.h"
 
 std::vector<int> MemoryManager::memoryBlocks;
+std::vector<bool> MemoryManager::frameTable;
 long long MemoryManager::maxOverallMemory = 0;
+int MemoryManager::frameSize = 0;
 
-MemoryManager::MemoryManager(long long maxOverallMem) {
-	this->maxOverallMemory = maxOverallMem;
+MemoryManager::MemoryManager() {
+	prepareMemoryBlocks();
 }
 
 void MemoryManager::prepareMemoryBlocks() {
-	long long numBlocks = (MemoryManager::maxOverallMemory / MainConsole::memPerProcess);
+    frameSize = MainConsole::memPerFrame;
+    long long numFrames = maxOverallMemory / frameSize;
 
-	for (int i = numBlocks; i >= 0; i--) {
-		if (i > 0) {
-			MemoryManager::memoryBlocks.push_back(MainConsole::memPerProcess * i);
-			//std::cerr << MemoryManager::memoryBlocks.back() << std::endl;
-		}
-	}
+    frameTable = std::vector<bool>(numFrames, false); // false if frames arwe free
+}
+
+int MemoryManager::findFreeFrame() {
+    for (int i = 0; i < frameTable.size(); ++i) {
+        if (!frameTable[i]) {
+            return i;
+        }
+    }
+    return -1;  // no free frame 
+}
+
+// release a frame, making it available again
+void MemoryManager::releaseFrame(int frameNumber) {
+    if (frameNumber >= 0 && frameNumber < frameTable.size()) {
+        frameTable[frameNumber] = false;  // mark as free frame
+        // debug
+        //std::cout << "Frame " << frameNumber << " released." << std::endl;
+    }
 }

@@ -5,6 +5,14 @@
 #include <chrono>
 #include <iomanip>
 #include <mutex>
+#include <unordered_map>
+
+
+// Paging
+struct PageTableEntry {
+    int frameNumber; 
+    bool valid;       
+};
 
 class Process {
 public:
@@ -34,14 +42,14 @@ public:
     void setCoreAssigned(int core) { coreAssigned = core; };
 
     //Process* getProcessByName(const std::string& processName) const;
-    void processSMI() const;
+    static void processSMI();
 
     // Generate memory snapshot file at quantum cycle
     static void generateMemorySnapshot(int quantumCycle);
     long long getEndAddress() const { return endAddress; }
     long long getStartAddress() const { return startAddress; }
     // Setter for start and end address
-    void setMemoryRange(long long start, int memoryBlockLoc);
+    void setMemoryRange(long long start, int memoryBlockLoc, long long memSize);
 
     int memoryBlockLoc;
     long long storedStartAddress;
@@ -49,6 +57,13 @@ public:
     long long startAddress;
     long long endAddress;
     static long long busyTime;
+
+    long long getMemoryUsage() const;
+
+    // Paging
+    std::unordered_map<int, PageTableEntry> pageTable;  
+    //void allocatePages(long long memRequired);
+    void freePages();
 
 private:
     int processCurCycle;

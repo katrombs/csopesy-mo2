@@ -33,7 +33,6 @@ std::mutex ScheduleWorker::schedulerMutex;
 // Memory
 long long MainConsole::maxOverallMem = 0;
 int MainConsole::memPerFrame = 0;
-long long MainConsole::memPerProcess = 0;
 
 
 ScheduleWorker::ScheduleWorker() {
@@ -145,7 +144,7 @@ void ScheduleWorker::roundRobin(int quantumCycles) {
     //Memory
     long long currMemAlloc = 0;
     int memoryBlockLoc = 0;
-    
+
     while (true) {
         //std::vector<std::thread> rrThreads; // vector of processes to run concurrently
         if (this->schedulerCurCycle != MainConsole::curClockCycle) {
@@ -153,10 +152,9 @@ void ScheduleWorker::roundRobin(int quantumCycles) {
             if (runningRRProcessCount == cores.size()) {
                 for (int i = 0; i < runningRRProcessList.size(); i++) {
                     if (runningRRProcessList.at(i).get() != nullptr) {
-                        if (runningRRProcessList.at(i).get()->getCurrentLine() != runningRRProcessList.at(i).get()->getTotalLines()){
+                        if (runningRRProcessList.at(i)->getCurrentLine() != runningRRProcessList.at(i)->getTotalLines()) {
                             ConsoleManager::getInstance()->waitingProcess(runningRRProcessList.at(i).get());
-                            cores[runningRRProcessList.at(i).get()->getCoreAssigned()] = -1;
-                           
+                            cores[runningRRProcessList.at(i)->getCoreAssigned()] = -1;
                         }
                     }
                 }
@@ -185,12 +183,18 @@ void ScheduleWorker::roundRobin(int quantumCycles) {
                     processList.erase(processList.begin()); // Pop top of ready queue
 
                     // Memory allocation
+                    // memory requirement between min and max memory per process
+                    std::random_device rd;
+                    std::mt19937_64 gen(rd());  // Use 64-bit version of Mersenne Twister
+                    std::uniform_int_distribution<long long> dis(MainConsole::minMemPerProc, MainConsole::maxMemPerProc);
+                    long long memRequired = dis(gen);
+
                     // Check if not exceeding maximum overall memory
-                    if (currMemAlloc < MainConsole::maxOverallMem) {
+                    if (currMemAlloc + memRequired <= MainConsole::maxOverallMem) {
                         this->runningRRProcessCount++;
                         // Check if previous memory blocks are taken
                         long long availableMemBlockAddr = 0.0;
-                        
+
                         for (int i = 0; i < MemoryManager::memoryBlocks.size(); i++) {
                             if (MemoryManager::memoryBlocks.at(i) != -1) {
                                 availableMemBlockAddr = MemoryManager::memoryBlocks.at(i);
@@ -202,11 +206,11 @@ void ScheduleWorker::roundRobin(int quantumCycles) {
 
                         // Assign mem-per-proc amount of memory to runningProcess
                         if (availableMemBlockAddr != 0) {
-                            runningProcess->setMemoryRange(availableMemBlockAddr, memoryBlockLoc); // to change
+                            runningProcess->setMemoryRange(availableMemBlockAddr, memoryBlockLoc, memRequired);
                         }
 
                         // Update currMemAlloc
-                        currMemAlloc = currMemAlloc + MainConsole::memPerProcess;
+                        currMemAlloc += memRequired;
 
                         // Create thread and push into rrThreads vector ??
                         std::thread processIncrementLine(&Process::incrementLine, runningProcess, coreAssigned);
@@ -221,7 +225,8 @@ void ScheduleWorker::roundRobin(int quantumCycles) {
                             }
                         }
                         // Free allocated memory
-                        currMemAlloc = currMemAlloc - MainConsole::memPerProcess;
+                        currMemAlloc -= memRequired;
+
                     }
                     else { // No memory available, push runningProcess back to processList
                         // Move process at the end of ready queue

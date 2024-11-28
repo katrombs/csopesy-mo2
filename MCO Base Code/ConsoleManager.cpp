@@ -252,6 +252,50 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 		logFile.close();
 	}
 }
+void ConsoleManager::vmstat() const {
+	std::cerr << "\n--------------------------------------------\n";
+	std::cerr << "| VMSTAT V01.00 Driver Version: 01.00      |\n";
+	std::cerr << "--------------------------------------------\n";
+
+	long long totalMemory = MainConsole::maxOverallMem;
+	long long usedMemory = getUsedMemory();
+
+	if (totalMemory < usedMemory) {
+		std::cerr << "Error: Used memory exceeds total memory!\n";
+		return;
+	}
+
+	long long freeMemory = totalMemory - usedMemory;
+
+	//int totalCpuTicks = activeCpuTicks + idleCpuTicks;
+
+	//// Memory statistics
+	std::cerr << "Total Memory: " << totalMemory << " KB\n";
+	std::cerr << "Used Memory: " << usedMemory << " KB\n";
+	std::cerr << "Free Memory: " << freeMemory << " KB\n";
+
+	///////// TODO implement these
+	//// CPU ticks statistics 
+	//std::cerr << "Idle CPU Ticks: " << idleCpuTicks << "\n";
+	//std::cerr << "Active CPU Ticks: " << activeCpuTicks << "\n";
+	//std::cerr << "Total CPU Ticks: " << totalCpuTicks << "\n";
+
+	//// Paging statistics
+	//std::cerr << "Pages Paged In: " << numPagedIn << "\n";
+	//std::cerr << "Pages Paged Out: " << numPagedOut << "\n";
+
+	std::cerr << "-------------------------------------------\n";
+}
+
+long long ConsoleManager::getUsedMemory() const {
+	long long usedMemory = 0;
+	for (const auto& process : unfinishedProcessList) {
+		usedMemory += process->getMemoryUsage();
+	}
+	return usedMemory;
+}
+
+
 
 ConsoleManager::ConsoleManager() {
 
