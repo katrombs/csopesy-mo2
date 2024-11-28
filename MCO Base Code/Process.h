@@ -34,7 +34,7 @@ public:
     void setCoreAssigned(int core) { coreAssigned = core; };
 
     //Process* getProcessByName(const std::string& processName) const;
-    void processSMI() const;
+    static void processSMI();
 
     // Generate memory snapshot file at quantum cycle
     static void generateMemorySnapshot(int quantumCycle);
@@ -49,6 +49,8 @@ public:
     long long startAddress;
     long long endAddress;
     static long long busyTime;
+    long long getMemoryUsage() const;
+
 
 private:
     int processCurCycle;
@@ -64,6 +66,6 @@ private:
 
     // Instance of ScheduleWorker
     //ScheduleWorker* scheduleWorker;
-
+    long long memoryUsage;
              
 };

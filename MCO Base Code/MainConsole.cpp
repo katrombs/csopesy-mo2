@@ -30,6 +30,10 @@ std::vector<int> ScheduleWorker::cores;
 bool anyAvailableCore = false;
 bool testRun = false;
 
+// uncomment when memory is fixed
+long long MainConsole::maxMemPerProcess = 0;
+long long MainConsole::minMemPerProcess = 0;
+
 void asciiPrint() {
     string asciiText[6] = { "  _____  _____  ____  _____  ______  _______     __",
                             " / ____|/ ____|/ __ \\|  __ \\|  ____|/ ____\\ \\   / /",
@@ -196,15 +200,29 @@ void MainConsole::process() {
                     }
                 }
                 else if (parameter == "max-overall-mem") {
-                    this->maxOverallMem = std::stoll(value);
+                    MainConsole::maxOverallMem = std::stoll(value);
                 }
                 else if (parameter == "mem-per-frame") {
-                    this->memPerFrame = std::stoi(value);
+                    MainConsole::memPerFrame = std::stoi(value);
                 }
-                else if (parameter == "mem-per-proc") {
-                    this->memPerProcess = std::stoll(value);
+                else if (parameter == "min-mem-per-proc") {
+                    MainConsole::minMemPerProcess = std::stoll(value);
+                }
+                else if (parameter == "max-mem-per-proc") {
+                    MainConsole::maxMemPerProcess = std::stoll(value);
                 }
             }
+
+            std::cerr << "num-cpu: " << MainConsole::totalNumCores << std::endl;
+            std::cerr << "scheduler: " << MainConsole::scheduler << std::endl;
+            std::cerr << "quantum-cycles: " << MainConsole::quantumCycles << std::endl;
+            std::cerr << "batch-process-freq: " << MainConsole::batchProcessFreq << std::endl;
+            std::cerr << "min-ins: " << MainConsole::minimumIns << std::endl;
+            std::cerr << "max-ins: " << MainConsole::maximumIns << std::endl;
+            std::cerr << "max-overall-mem: " << MainConsole::maxOverallMem << std::endl;
+            std::cerr << "mem-per-frame: " << MainConsole::memPerFrame << std::endl;
+            std::cerr << "min-mem-per-proc: " << MainConsole::minMemPerProcess << std::endl;
+            std::cerr << "max-mem-per-proc: " << MainConsole::maxMemPerProcess << std::endl;
 
             MemoryManager memoryManager(this->maxOverallMem);
             memoryManager.prepareMemoryBlocks();
@@ -435,6 +453,12 @@ void MainConsole::process() {
             }
             else if (command == "scheduler-stop") {
                 ScheduleWorker::stopTest = true;
+            }
+            else if (command == "process-smi") {
+                Process::processSMI();
+            }
+            else if (command == "vmstat") {
+                ConsoleManager::getInstance()->vmstat();
             }
             else if (command == "exit") {
                 std::cerr << "Exiting emulator..." << std::endl;

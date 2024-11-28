@@ -52,7 +52,16 @@ public:
 
 	std::vector<Process*> getProcessesInMemory() const;
 	int calculateExternalFragmentation(int maxMemory) const;
-	static const int MAX_MEMORY = 16384;
+
+	int getUsedMemory() const;
+	static void updateCpuTicks(bool isActive);
+
+	static int idleCpuTicks;
+	static int activeCpuTicks;
+	static int numPagedIn;
+	static int numPagedOut;
+
+	void vmstat(); 
 
 private:
 	ConsoleManager();

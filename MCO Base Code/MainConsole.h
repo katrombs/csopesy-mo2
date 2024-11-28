@@ -29,6 +29,9 @@ public:
 	static int memPerFrame;
 	static long long memPerProcess;
 
+	static long long minMemPerProcess;
+	static long long maxMemPerProcess;
+
 	static std::vector <std::string> processesNameList;
 
 private:

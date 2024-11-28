@@ -14,6 +14,11 @@ int ScheduleWorker::usedCores = 0;
 int ScheduleWorker::availableCores = 0;
 int MainConsole::totalNumCores = 0;
 
+int ConsoleManager::idleCpuTicks = 0;
+int ConsoleManager::activeCpuTicks = 0;
+int ConsoleManager::numPagedIn = 0;
+int ConsoleManager::numPagedOut = 0;
+
 ConsoleManager* ConsoleManager::sharedInstance = nullptr;
 ConsoleManager* ConsoleManager::getInstance() {
 	return sharedInstance;
@@ -252,6 +257,51 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 		logFile.close();
 	}
 }
+
+int ConsoleManager::getUsedMemory() const {
+	long long usedMemory = 0;
+	for (const auto& process : unfinishedProcessList) {
+		usedMemory += process->getMemoryUsage();
+	}
+	return static_cast<int>(usedMemory);
+}
+
+
+void ConsoleManager::vmstat(){
+	// Total and used memory in KB
+	std::cerr << "-------------------------------------------\n";
+	long long totalMemory = MainConsole::maxOverallMem;
+	long long usedMemory = getUsedMemory();
+	long long freeMemory = totalMemory - usedMemory;
+
+	// CPU Ticks
+	int totalCpuTicks = activeCpuTicks + idleCpuTicks;
+
+	// Memory statistics
+	std::cerr << "Total Memory: " << totalMemory << " KB\n";
+	std::cerr << "Used Memory: " << usedMemory << " KB\n";
+	std::cerr << "Free Memory: " << freeMemory << " KB\n";
+
+	// CPU ticks statistics
+	std::cerr << "Idle CPU Ticks: " << idleCpuTicks << "\n";
+	std::cerr << "Active CPU Ticks: " << activeCpuTicks << "\n";
+	std::cerr << "Total CPU Ticks: " << totalCpuTicks << "\n";
+
+	// Paging statistics
+	std::cerr << "Pages Paged In: " << numPagedIn << "\n";
+	std::cerr << "Pages Paged Out: " << numPagedOut << "\n";
+	std::cerr << "-------------------------------------------\n";
+}
+
+void ConsoleManager::updateCpuTicks(bool isActive) {
+	if (isActive) {
+		activeCpuTicks++;
+	}
+	else {
+		idleCpuTicks++;
+	}
+}
+
 
 ConsoleManager::ConsoleManager() {
 

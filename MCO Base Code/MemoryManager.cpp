@@ -4,18 +4,32 @@
 
 std::vector<int> MemoryManager::memoryBlocks;
 long long MemoryManager::maxOverallMemory = 0;
+int MemoryManager::totalFrames = 0;
 
 MemoryManager::MemoryManager(long long maxOverallMem) {
 	this->maxOverallMemory = maxOverallMem;
 }
 
-void MemoryManager::prepareMemoryBlocks() {
-	long long numBlocks = (MemoryManager::maxOverallMemory / MainConsole::memPerProcess);
 
-	for (int i = numBlocks; i >= 0; i--) {
-		if (i > 0) {
-			MemoryManager::memoryBlocks.push_back(MainConsole::memPerProcess * i);
-			//std::cerr << MemoryManager::memoryBlocks.back() << std::endl;
-		}
-	}
+void MemoryManager::prepareMemoryBlocks() {
+    // handle single block
+    if (MainConsole::memPerFrame == 0) {
+        return;
+    }
+
+    long long numBlocks = MemoryManager::maxOverallMemory / MainConsole::memPerFrame;
+
+    if (numBlocks == 1) {
+        MemoryManager::memoryBlocks.push_back(MainConsole::memPerFrame);
+    }
+}
+
+
+// Paging
+void MemoryManager::pageIn() {
+    ConsoleManager::numPagedIn++;
+}
+
+void MemoryManager::pageOut() {
+    ConsoleManager::numPagedOut++;
 }

@@ -10,6 +10,12 @@ public:
 
 	static void prepareMemoryBlocks();
 
-private:
+	static void pageIn();
+	static void pageOut();
 	static long long maxOverallMemory;
+
+private:
+	//static long long maxOverallMemory;
+	static int totalFrames;
+
 };
