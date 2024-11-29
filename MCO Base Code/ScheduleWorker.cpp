@@ -274,7 +274,7 @@ void ScheduleWorker::testSchedule() {
             if (isProcessNameAvailable) {
                 std::random_device rd;
                 std::mt19937_64 gen(rd());
-                std::uniform_int_distribution<long long> dis(MainConsole::minMemPerProc, MainConsole::maxMemPerProc);
+                std::uniform_int_distribution<long long> dis(MainConsole::minimumIns, MainConsole::maximumIns);
                 long long random_value = dis(gen);
 
 

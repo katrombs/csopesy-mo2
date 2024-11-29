@@ -88,7 +88,7 @@ void Process::incrementLine(int core) {
             {
                 std::lock_guard<std::mutex> lock(mtx);
                 ScheduleWorker::cores[coreAssigned] = -1; // mark core as avail
-                ScheduleWorker::usedCores--;
+                //ScheduleWorker::usedCores--;
                 ConsoleManager::getInstance()->addFinishedProcess(this);
             }
             freePages();
