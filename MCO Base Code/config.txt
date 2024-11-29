@@ -6,6 +6,6 @@ max-ins 2000
 scheduler "rr"
 num-cpu 16
 max-overall-mem 32768
-mem-per-frame 16384
-min-mem-per-proc 16384
-max-mem-per-proc 16384
+mem-per-frame 32768
+min-mem-per-proc 32768
+max-mem-per-proc 32768
