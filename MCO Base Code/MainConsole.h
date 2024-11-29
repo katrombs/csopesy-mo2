@@ -14,7 +14,6 @@ public:
 
 	// Other Variables (For Whole System)
 	static long long batchProcessFreq;
-	static int curClockCycle;
 	static int totalNumCores;
 	static String scheduler;
 
@@ -25,11 +24,15 @@ public:
 	static long long delaysPerExec;
 
 	// First-fit Memory manager
-	//static long long maxOverallMem;
-	//static int memPerFrame;
-	//static long long memPerProcess;
+	static long long maxOverallMem;
+	static int memPerFrame;
+	static long long minMemPerProc;
+	static long long maxMemPerProc;
 
 	static std::vector <std::string> processesNameList;
+	static std::atomic<int> curClockCycle;
+	void startClock();
+
 
 private:
 	bool refresh;

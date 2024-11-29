@@ -137,6 +137,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MainConsole.cpp" />
     <ClCompile Include="AConsole.cpp" />
+    <ClCompile Include="MemoryManager.cpp" />
     <ClCompile Include="Process.cpp" />
     <ClCompile Include="ScheduleWorker.cpp" />
   </ItemGroup>
@@ -146,6 +147,7 @@
     <ClInclude Include="ConsoleManager.h" />
     <ClInclude Include="FileWrite.h" />
     <ClInclude Include="MainConsole.h" />
+    <ClInclude Include="MemoryManager.h" />
     <ClInclude Include="Process.h" />
     <ClInclude Include="AConsole.h" />
     <ClInclude Include="ScheduleWorker.h" />

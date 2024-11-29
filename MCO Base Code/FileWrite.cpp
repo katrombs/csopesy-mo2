@@ -1,5 +1,6 @@
 #include "FileWrite.h"
 #include "Process.h"
+#include "MainConsole.h"
 #include <vector> 
 #include <fstream>
 #include <filesystem>
@@ -52,13 +53,15 @@ void FileWrite::generateMemorySnapshot(int quantumCycle, const std::vector<Proce
     // following mock UI
     outFile << "Timestamp: (" << getCurrentTimestamp() << ")\n";
     outFile << "Number of processes in memory: " << processes.size() << "\n";
-    outFile << "Total external fragmentation in KB: " << fragmentation / 1024 << "\n";
-    outFile << "\n----end---- = 16384\n";
+    //outFile << "Total external fragmentation in KB: " << MainConsole::maxOverallMem - (MainConsole::memPerProcess * processes.size()) << "\n";
+    outFile << "Total external fragmentation in KB: " << fragmentation << "\n";
+
+    outFile << "\n----end---- = " << MainConsole::maxOverallMem << std::endl;
     for (const auto& process : processes) {
-        outFile << process->getEndAddress() << "\n";
-        outFile << "P" << process->getID() << "\n";
         outFile << process->getStartAddress() << "\n";
+        outFile << "P" << process->getID() << "\n";
+        outFile << process->getEndAddress() << "\n\n";
     }
-    outFile << "\n----start---- = 0\n";
+    outFile << "----start---- = 0\n";
     outFile.close();
 }

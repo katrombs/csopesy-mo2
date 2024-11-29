@@ -8,9 +8,9 @@
 #include "ScheduleWorker.h"
 #include <algorithm> 
 #include <iostream>
+#include "MemoryManager.h"
 
 
-int ScheduleWorker::usedCores = 0;
 int ScheduleWorker::availableCores = 0;
 int MainConsole::totalNumCores = 0;
 
@@ -133,50 +133,66 @@ bool ConsoleManager::isRunning() const {
 }
 
 void ConsoleManager::addFinishedProcess(Process* process) {
-	
-	for (int i = 0; i < unfinishedProcessList.size(); i++) {
-		if (unfinishedProcessList[i] == process) {
-			//Remove the process
-			unfinishedProcessList.erase(unfinishedProcessList.begin() + i);
-			break;
-		}
+	// Remove the process from unfinishedProcessList
+	auto it_unfinished = std::find(unfinishedProcessList.begin(), unfinishedProcessList.end(), process);
+	if (it_unfinished != unfinishedProcessList.end()) {
+		unfinishedProcessList.erase(it_unfinished);
 	}
+
+	// Add process to finishedProcesses if not already present
 	if (std::find(finishedProcesses.begin(), finishedProcesses.end(), process) == finishedProcesses.end()) {
 		finishedProcesses.push_back(process);
+	}
+
+	// Remove the process from waitingProcesses
+	auto it_waiting = std::find(waitingProcesses.begin(), waitingProcesses.end(), process);
+	if (it_waiting != waitingProcesses.end()) {
+		waitingProcesses.erase(it_waiting);
 	}
 }
 
 std::vector<Process*> ConsoleManager::getProcessesInMemory() const {
 	return unfinishedProcessList;
 }
-int ConsoleManager::calculateExternalFragmentation(int maxMemory) const {
-	int fragmentation = 0;
-	int lastEndAddress = 0;
+
+int ConsoleManager::calculateExternalFragmentation() const {
+	long long fragmentation = 0;
+	long long lastEndAddress = 0;
+	long long totalMemory = MainConsole::maxOverallMem;
+
 	// If no processes are loaded, all memory is fragmented
 	if (unfinishedProcessList.empty()) {
-		return maxMemory;
+		return totalMemory;
 	}
+
 	// Sort processes by starting address
 	std::vector<Process*> sortedProcesses = unfinishedProcessList;
 	std::sort(sortedProcesses.begin(), sortedProcesses.end(), [](Process* a, Process* b) {
 		return a->getStartAddress() < b->getStartAddress();
 		});
+
 	// Calculate gaps between processes
 	for (const auto& process : sortedProcesses) {
 		fragmentation += process->getStartAddress() - lastEndAddress;
 		lastEndAddress = process->getEndAddress();
 	}
+
 	// Add remaining space after the last process
-	fragmentation += maxMemory - lastEndAddress;
+	fragmentation += totalMemory - lastEndAddress;
 	return fragmentation;
 }
+
 void ConsoleManager::waitingProcess(Process* process) {
+
+	
 	for (int i = 0; i < unfinishedProcessList.size(); i++) {
 		if (unfinishedProcessList[i] == process) {
 			unfinishedProcessList.erase(unfinishedProcessList.begin() + i);
 			break;
 		}
 	}
+	
+
 	if (std::find(waitingProcesses.begin(), waitingProcesses.end(), process) == waitingProcesses.end()) {
 		waitingProcesses.push_back(process);
 	}
@@ -202,9 +218,15 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 	// TODO: call respective variables
 	// Compute CPU Utilization
 	int cpuUtilPercent = (static_cast<float>(ScheduleWorker::usedCores) / MainConsole::totalNumCores) * 100;
-	int availCores = abs((ScheduleWorker::usedCores - ScheduleWorker::availableCores));
-	*outStream << "\nCPU utilization: " << cpuUtilPercent << "%/100%" << "\nCores used: " << ScheduleWorker::usedCores << "\nCores available: " << availCores << "\n" << std::endl;
+	//int availCores = abs((ScheduleWorker::usedCores - ScheduleWorker::availableCores));
+	int usedCoresValue = ScheduleWorker::usedCores.load();
+	int availableCoresValue = ScheduleWorker::availableCores; // Assuming this is not atomic
+	int availCores = abs(usedCoresValue - availableCoresValue);
+	*outStream << "\nCPU utilization: " << cpuUtilPercent << "%/100%"
+		<< "\nCores used: " << usedCoresValue
+		<< "\nCores available: " << availCores << "\n" << std::endl;
 
+	
 	*outStream << "--------------------------------------\n";
 	*outStream << "Waiting Processes:" << std::endl;
 	for (const auto& process : waitingProcesses) {
@@ -215,6 +237,7 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 			//<< ", Unfinished: " << (process->isFinished() ? "Yes" : "No") // Unfinished? Y/N
 			<< std::endl;
 	}
+	
 
 	*outStream << "--------------------------------------\n";
 	*outStream << "Running Processes:" << std::endl;
@@ -241,14 +264,49 @@ void ConsoleManager::listFinishedProcesses(bool writeToFile) {
 		logFile.close();
 	}
 }
+void ConsoleManager::vmstat() const {
+	std::cerr << "\n--------------------------------------------\n";
+	std::cerr << "| VMSTAT V01.00 Driver Version: 01.00      |\n";
+	std::cerr << "--------------------------------------------\n";
 
-int ConsoleManager::getUsedMemory() const {
-	int usedMemory = 0;
+	long long totalMemory = MainConsole::maxOverallMem;
+	long long usedMemory = MemoryManager::getInstance()->getUsedMemory();
+	long long freeMemory = totalMemory - usedMemory;
+
+
+	if (totalMemory < usedMemory) {
+		std::cerr << "Error: Used memory exceeds total memory!\n";
+		return;
+	}
+
+	//int totalCpuTicks = activeCpuTicks + idleCpuTicks;
+
+	//// Memory statistics
+	std::cerr << "Total Memory: " << totalMemory << " KB\n";
+	std::cerr << "Used Memory: " << usedMemory << " KB\n";
+	std::cerr << "Free Memory: " << freeMemory << " KB\n";
+
+	///////// TODO implement these
+	//// CPU ticks statistics 
+	//std::cerr << "Idle CPU Ticks: " << idleCpuTicks << "\n";
+	//std::cerr << "Active CPU Ticks: " << activeCpuTicks << "\n";
+	//std::cerr << "Total CPU Ticks: " << totalCpuTicks << "\n";
+
+	//// Paging statistics
+	//std::cerr << "Pages Paged In: " << numPagedIn << "\n";
+	//std::cerr << "Pages Paged Out: " << numPagedOut << "\n";
+
+	std::cerr << "-------------------------------------------\n";
+}
+
+long long ConsoleManager::getUsedMemory() const {
+	long long usedMemory = 0;
 	for (const auto& process : unfinishedProcessList) {
-		usedMemory += process->getMemoryUsage(); 
+		usedMemory += process->getMemoryUsage();
 	}
 	return usedMemory;
 }
+
 
 
 ConsoleManager::ConsoleManager() {

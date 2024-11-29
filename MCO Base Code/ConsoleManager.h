@@ -51,9 +51,9 @@ public:
 	Process* getProcessByName(const std::string& processName) const; 
 
 	std::vector<Process*> getProcessesInMemory() const;
-	int calculateExternalFragmentation(int maxMemory) const;
-	static const int MAX_MEMORY = 16384;
-	int getUsedMemory() const;
+	int calculateExternalFragmentation() const;
+	long long getUsedMemory() const;
+	void vmstat() const;
 
 private:
 	ConsoleManager();

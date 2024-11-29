@@ -6,13 +6,12 @@
 #include <thread>
 
 using namespace std; //To not specify the prefix (std::<syntax>)
-int MainConsole::curClockCycle = 0;
 
 void startCpuCycle() {
     while (true) {
         MainConsole::curClockCycle++;
         //std::cerr << MainConsole::curClockCycle << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(18)); // <----------------- CHANGE THIS TO milliseconds(300) TO MAKE EVERYTHING FASTER
+        std::this_thread::sleep_for(std::chrono::milliseconds(300)); // <----------------- CHANGE THIS TO milliseconds(300) TO MAKE EVERYTHING FASTER
     }
 }
 
