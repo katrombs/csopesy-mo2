@@ -102,11 +102,14 @@ void ScheduleWorker::scheduleProcess() {
                 if (cores[i] == -1) { // available core
                     auto process = processList.front();
 
+                    long long memRequired = MainConsole::maxMemPerProc; 
+                    process->setMemoryRequired(memRequired);
+
                     // Attempt memory allocation for the process
                     long long startAddress;
-                    if (MemoryManager::getInstance()->allocateFlat(process->getMemoryRequired(), startAddress)) {
+                    if (MemoryManager::getInstance()->allocateFlat(memRequired, startAddress)) {
                         // Set memory range for the process
-                        process->setMemoryRange(startAddress, process->getMemoryRequired());
+                        process->setMemoryRange(startAddress, memRequired);
 
                         // Assign core to process
                         coreAssigned = i;
