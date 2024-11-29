@@ -1,22 +1,50 @@
 #pragma once
 
 #include <vector>
+#include <mutex>
 
 class MemoryManager {
 public:
-	MemoryManager();
+    static MemoryManager* getInstance();
+    MemoryManager() {}
+    void initialize(long long overallMemory, int frameSize);
+    long long maxOverallMemory;
 
-	static std::vector<int> memoryBlocks;
 
-	static void prepareMemoryBlocks();
+    // Static methods for preparing memory blocks and managing frames
+    void prepareMemoryBlocks();
+    int findFreeFrame();
+    void releaseFrame(int frameNumber);
 
-	// Paging
-	static std::vector<bool> frameTable;     
-	static void prepareFrames();          
-	static int findFreeFrame();             
-	static void releaseFrame(int frameNumber);
+    // Flat memory allocation method
+    bool allocateFlat(long long memRequired, long long& startAddress);
+
+    // Paging memory allocation method
+    int allocatePage();
+    void releasePage(int frameNumber);
+
+    std::vector<bool> frameTable;
+
+    void deallocateFlat(long long startAddress, long long memReleased);
+
+    int getFrameSize();
+    long long getUsedMemory();
+
+    void setMaxOverallMemory(long long value) {
+        std::lock_guard<std::mutex> lock(memoryMutex);  
+        maxOverallMemory = value;
+    }
+
+    long long getMaxOverallMemory() {
+        std::lock_guard<std::mutex> lock(memoryMutex);
+        return maxOverallMemory;
+    }
 
 private:
-	static long long maxOverallMemory;
-	static int frameSize;
+    static MemoryManager* instance;
+    long long totalMemory;
+    long long usedMemory;
+	int frameSize;
+    std::vector<std::pair<long long, long long>> memoryBlocks;
+    std::mutex memoryMutex;
 };
