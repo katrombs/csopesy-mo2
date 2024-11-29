@@ -10,10 +10,12 @@
 #include <ctime>
 #include <vector>
 #include "MemoryManager.h"
+#include <random>
 
 long long MainConsole::delaysPerExec = 0;
 int ScheduleWorker::quantumCycleCounter = 0;
 long long Process::busyTime = MainConsole::delaysPerExec;
+long long maxOverallMem = MainConsole::maxOverallMem;
 
 long long Process::getMemoryUsage() const {
     return endAddress - startAddress;
@@ -26,22 +28,29 @@ Process::Process(const std::string& name, int id, long long totalLines, const st
 void Process::incrementLine(int core) {
 
     if (this != nullptr) {
-        ConsoleManager::getInstance()->unfinishedProcessList.push_back(this);
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            auto& unfinishedList = ConsoleManager::getInstance()->unfinishedProcessList;
+            if (std::find(unfinishedList.begin(), unfinishedList.end(), this) == unfinishedList.end()) {
+                unfinishedList.push_back(this);
+            }
+        }
 
-        while (true) {
+        int quantum = (MainConsole::scheduler == "rr") ? (MainConsole::quantumCycles > 0 ? MainConsole::quantumCycles : totalLineOfInstruction) : 1;
+
+        while (currLineOfInstruction < totalLineOfInstruction) {
             {
-                std::lock_guard<std::mutex> lock(mtx);
+                std::unique_lock<std::mutex> lock(mtx);
 
-                // Check if the current process cycle is different from the main clock cycle
-                if (this->processCurCycle != MainConsole::curClockCycle) {
+                // wait till clock advances
+                while (this->processCurCycle == MainConsole::curClockCycle) {
+                    lock.unlock();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10)); 
+                    lock.lock();
+                }
 
-                    // Check for busy time if 0
+                for (int i = 0; i < quantum && currLineOfInstruction < totalLineOfInstruction; ++i) {
                     if (busyTime == 0) {
-                        // Check if the current line of instruction exceeds total instructions
-                        if (currLineOfInstruction >= totalLineOfInstruction) {
-                            break; // Exit loop if done
-                        }
-
                         // Get the current time and format it
                         time_t currTime;
                         char timeCreation[50];
@@ -59,95 +68,44 @@ void Process::incrementLine(int core) {
                         printLogs.push_back(log); // Put print statement to printLogs
 
                         // Increment the current line of instruction and update the process cycle
-                        if (MainConsole::scheduler == "fcfs") {
-                            currLineOfInstruction++;
-                        }
-                        else if (MainConsole::scheduler == "rr") {
-
-                            ScheduleWorker::usedCores++;
-                            for (int i = 0; i < MainConsole::quantumCycles; i++) {
-                                if (currLineOfInstruction >= totalLineOfInstruction) {
-                                    //std::lock_guard<std::mutex> lock(ScheduleWorker::schedulerMutex);
-
-                                    ///////////////// PAGING
-                                    ScheduleWorker::cores[coreAssigned] = -1;  // mark the core as available
-                                    ConsoleManager::getInstance()->addFinishedProcess(this);
-
-                                    // Free all pages allocated to this process
-                                    freePages();
-                                    ScheduleWorker::usedCores--;
-                                    /*break*/;
-                                }
-                                else {
-                                    currLineOfInstruction++;
-                                }
-                            }
-
-                            generateMemorySnapshot(ScheduleWorker::quantumCycleCounter);
-                            ScheduleWorker::quantumCycleCounter++;
-                            break;
-                        }
-                        this->processCurCycle = MainConsole::curClockCycle;
+                        currLineOfInstruction++;
                         this->busyTime = MainConsole::delaysPerExec;
                     }
                     else {
-                        this->setCoreAssigned(core);
-
-                        // Process in CPU but waits for "delay" to finish before executing
                         this->busyTime--;
-                        this->processCurCycle = MainConsole::curClockCycle;
-
-                        // Memory snapshot file for every quantum cycle
-                        if (ScheduleWorker::quantumCycleCounter % MainConsole::quantumCycles == 0) {
-                            //// ******* Can be commented out later ******* 
-                            //std::cout << "Quantum cycle " << ScheduleWorker::quantumCycleCounter
-                            //    << " completed. Generating memory snapshot...\n";
-                            //// ******************************************
-                            generateMemorySnapshot(ScheduleWorker::quantumCycleCounter);
-                        }
                     }
-
+                    this->processCurCycle = MainConsole::curClockCycle;
+                    lock.unlock();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Adjust sleep time as needed
+                    lock.lock();
                 }
-            } // Unlocks mtx when going out of scope
-
-
+            }
+            std::this_thread::yield();
         }
 
-        // After exiting the loop, handle the finishing process logic
-        {
-            std::lock_guard<std::mutex> lock(mtx); // Lock for modifying shared resources
-            if (currLineOfInstruction >= totalLineOfInstruction) {
-                ScheduleWorker::cores[coreAssigned] = -1; // Mark the core as available
+        // if complete after quantum, mark the process as finished 
+        if (currLineOfInstruction >= totalLineOfInstruction) {
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                ScheduleWorker::cores[coreAssigned] = -1; // mark core as avail
+                ScheduleWorker::usedCores--;
                 ConsoleManager::getInstance()->addFinishedProcess(this);
-                //FileWrite::generateFile(processID, processName, getTimeCreated(), printLogs);
-                //ScheduleWorker::usedCores--;
             }
+            freePages();
+            MemoryManager::getInstance()->deallocateFlat(startAddress, endAddress - startAddress); // deallocate
         }
     }
 }
+
 
 void Process::freePages() {
     for (auto& entry : pageTable) {
         if (entry.second.valid) {
-            MemoryManager::releaseFrame(entry.second.frameNumber);  // release
-            entry.second.valid = false;  
+            MemoryManager::getInstance()->releaseFrame(entry.second.frameNumber);
+            entry.second.valid = false;
         }
     }
 }
-
-
-//void Process::processSMI() const {
-//    std::cout << "Process Name: " << processName << std::endl;
-//    std::cout << "ID: " << processID << std::endl;
-//    std::cout << "Current Line of Instruction: " << currLineOfInstruction << "/" << totalLineOfInstruction << std::endl;
-//
-//    if (currLineOfInstruction >= totalLineOfInstruction) {
-//        std::cout << "Status: Finished" << std::endl;
-//    }
-//    else {
-//        std::cout << "Status: Running" << std::endl;
-//    }
-//}
 
 void Process::processSMI(){
     ConsoleManager* consoleManager = ConsoleManager::getInstance();
@@ -187,34 +145,33 @@ std::vector<std::string> Process::getPrintLogs() {
 void Process::generateMemorySnapshot(int quantumCycle) {
     std::vector<Process*> processesInMemory = ConsoleManager::getInstance()->getProcessesInMemory();
     // for debugging, can be commented out later
-    if (processesInMemory.empty()) {
-        std::cout << "No processes in memory during snapshot at quantum cycle " << quantumCycle << "\n";
-    }
-    int externalFragmentation = ConsoleManager::getInstance()->calculateExternalFragmentation(MainConsole::maxOverallMem);
+    //if (processesInMemory.empty()) {
+    //    std::cout << "No processes in memory during snapshot at quantum cycle " << quantumCycle << "\n";
+    //}
+    int externalFragmentation = ConsoleManager::getInstance()->calculateExternalFragmentation();  
     FileWrite::generateMemorySnapshot(quantumCycle, processesInMemory, externalFragmentation);
 }
 
-void Process::setMemoryRange(long long start, int memoryBlockLoc, long long memSize) {
+void Process::setMemoryRange(long long start, long long memSize) {
+    this->startAddress = start;
+    this->endAddress = start + memSize;
+}
 
-    if (this != nullptr) {
-        this->memoryBlockLoc = memoryBlockLoc;
-        storedStartAddress = start;
-        startAddress = start;
-        endAddress = startAddress + memSize;
-        storedEndAddress = endAddress;
+void Process::setMemoryRequired(long long memRequired) {
+    this->memoryRequired = memRequired;
+}
 
-        for (int i = 0; i < MemoryManager::memoryBlocks.size(); i++) {
-            if (MemoryManager::memoryBlocks.at(i) == endAddress) {
-                MemoryManager::memoryBlocks.at(i) = -1;
-                break;
-            }
-        }
-        //for (int i = 0; i < MemoryManager::memoryBlocks.size(); i++) {
-        //    
-        //    std::cerr << MemoryManager::memoryBlocks.at(i) << std::endl;
-     
-        //}
+long long Process::getMemoryRequired() const {
+    return memoryRequired;
+}
 
-    }
+void Process::addPage(int pageIndex) {
+    PageTableEntry entry;
+    entry.frameNumber = pageIndex;
+    entry.valid = true;
+    pageTable[pageIndex] = entry;
+}
 
+bool Process::isFinished() const {
+    return currLineOfInstruction >= totalLineOfInstruction;
 }

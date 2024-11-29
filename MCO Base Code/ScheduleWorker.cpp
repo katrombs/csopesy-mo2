@@ -27,11 +27,13 @@ String MainConsole::scheduler = "";
 
 int ScheduleWorker::runningRRProcessCount = 0;
 std::vector<std::shared_ptr<Process>> ScheduleWorker::runningRRProcessList;
+std::atomic<int> ScheduleWorker::usedCores{ 0 };
 
 std::mutex ScheduleWorker::schedulerMutex;
+std::mutex ScheduleWorker::runningProcessesMutex;
 
 // Memory
-long long MainConsole::maxOverallMem = 0;
+long long MainConsole::maxOverallMem;
 int MainConsole::memPerFrame = 0;
 
 
@@ -44,21 +46,23 @@ ScheduleWorker::~ScheduleWorker() {
 }
 
 void ScheduleWorker::initialize(int numCores) {
+    static bool memoryManagerInitialized = false;
+    if (!memoryManagerInitialized) {
+        MemoryManager::getInstance()->initialize(MainConsole::maxOverallMem, MainConsole::memPerFrame);
+        memoryManagerInitialized = true;
+    }
 
     this->schedulerCurCycle = MainConsole::curClockCycle;
 
     this->availableCores = numCores;
     this->initializeCores(numCores);
 
-    //Make a thread for the scheduler so it can constantly check for processes
     if (MainConsole::scheduler == "fcfs") {
         std::thread scheduleThread(&ScheduleWorker::scheduleProcess, this);
-        //Detach it
         scheduleThread.detach();
     }
     else if (MainConsole::scheduler == "rr") {
         std::thread scheduleThread(&ScheduleWorker::roundRobin, this, MainConsole::quantumCycles);
-        //Detach it
         scheduleThread.detach();
     }
 }
@@ -72,6 +76,7 @@ void ScheduleWorker::addProcess(std::shared_ptr<Process> process) {
     //    }
     //}
     processList.push_back(process);
+    //std::cout << "[DEBUG] Process " << process->getName() << " added to processList." << std::endl;
 }
 
 void ScheduleWorker::addWaitProcess(std::shared_ptr<Process> process) {
@@ -94,23 +99,37 @@ void ScheduleWorker::scheduleProcess() {
                 i = 0;
             }
             if (!processList.empty()) {
-                if (cores[i] == -1) { // Found available core
-                    // Assign core to process
-                    coreAssigned = i;
-                    //Set core to busy
-                    cores[i] = 1;
-                    // Add count of used cores
-                    usedCores++;
-                    // Associate core to currently executed process
-                    //Start the Process
-                    std::thread processIncrementLine(&Process::incrementLine, processList.front(), coreAssigned);
-                    //Separate the thread of the process.
-                    processIncrementLine.detach();
-                    //Remove the current process in processList <-- processList should be empty again 
-                    processList.erase(processList.begin());
-                    // Add to processList the process at the top of waitingQueue
-                    if (!waitingQueue.empty()) {
-                        processList.push_back(waitingQueue.front());
+                if (cores[i] == -1) { // available core
+                    auto process = processList.front();
+
+                    // Attempt memory allocation for the process
+                    long long startAddress;
+                    if (MemoryManager::getInstance()->allocateFlat(process->getMemoryRequired(), startAddress)) {
+                        // Set memory range for the process
+                        process->setMemoryRange(startAddress, process->getMemoryRequired());
+
+                        // Assign core to process
+                        coreAssigned = i;
+                        //Set core to busy
+                        cores[i] = 1;
+                        // Add count of used cores
+                        usedCores++;
+                        //Start the Process
+                        std::thread processIncrementLine(&Process::incrementLine, process, coreAssigned);
+                        // Separate the thread of the process.
+                        processIncrementLine.detach();
+                        // Remove the current process in processList
+                        processList.erase(processList.begin());
+                        // Add to processList the process at the top of waitingQueue
+                        if (!waitingQueue.empty()) {
+                            processList.push_back(waitingQueue.front());
+                            waitingQueue.erase(waitingQueue.begin());
+                        }
+                    }
+                    else {
+                        // If memory allocation failed, move the process to the waiting queue
+                        waitingQueue.push_back(processList.front());
+                        processList.erase(processList.begin());
                     }
                 }
             }
@@ -122,124 +141,92 @@ void ScheduleWorker::scheduleProcess() {
 
     }
 }
-
 void ScheduleWorker::roundRobin(int quantumCycles) {
-    // Pause for a moment (This is necessary so that it will start checking on CPU #0 upon initialized)
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    /* Round robin algorithm
-    RR Steps:
-        1. Assign to runningProcess the process at the top of the ready queue
-        2.1 If process is not completely executed, keep executing until quantumCycleCounter == quantumCycles
-        2.2 Else if process is completely executed and quantumCycleCounter < quantumCycles, get the process at
-            the top of the ready queue and continue executing from current quantumCycleCounter until quantumCycles
-        3. When quantumCycleCounter == quantumCycles
-        3.1 If process->currLineOfInstruction < totalLineOfInstruction, move process to the end of ready queue
-        4. Repeat steps
-    */
+
     int i = 0;
     this->quantumCycleCounter = 0;
-    std::shared_ptr<Process> runningProcess = nullptr;
-    // Vector of threads of processes concurrently running
-    std::vector<std::thread> rrThreads;
-    //Memory
-    long long currMemAlloc = 0;
-    int memoryBlockLoc = 0;
 
     while (true) {
-        //std::vector<std::thread> rrThreads; // vector of processes to run concurrently
         if (this->schedulerCurCycle != MainConsole::curClockCycle) {
-
-            if (runningRRProcessCount == cores.size()) {
-                for (int i = 0; i < runningRRProcessList.size(); i++) {
-                    if (runningRRProcessList.at(i).get() != nullptr) {
-                        if (runningRRProcessList.at(i)->getCurrentLine() != runningRRProcessList.at(i)->getTotalLines()) {
-                            ConsoleManager::getInstance()->waitingProcess(runningRRProcessList.at(i).get());
-                            cores[runningRRProcessList.at(i)->getCoreAssigned()] = -1;
-                        }
-                    }
-                }
-                MemoryManager::prepareMemoryBlocks();
-
-                usedCores = 0;
-                runningRRProcessCount = 0;
-            }
-
-            // If all cores are checked, recheck all again.
-            if (i == cores.size()) {
+            if (i >= cores.size()) {
                 i = 0;
             }
 
             if (!processList.empty()) {
-                if (cores[i] == -1 && this->runningRRProcessCount < cores.size()) { // Found available core
-                    //std::lock_guard<std::mutex> lock(schedulerMutex);
+                if (cores[i] == -1) {
+                    std::shared_ptr<Process> runningProcess;
 
-                    // Core assignment
-                    coreAssigned = i;
-                    // Set core to busy
-                    cores[i] = 1;
+                    {
+                        std::lock_guard<std::mutex> lock(schedulerMutex);
+                        runningProcess = processList.front();
+                        processList.erase(processList.begin());
+                    }
 
-                    runningProcess = processList.front(); // Assign process at the top of ready queue
-                    runningRRProcessList.push_back(runningProcess);
-                    processList.erase(processList.begin()); // Pop top of ready queue
+                    // Assign core to process
+                    cores[i] = i;
+                    runningProcess->setCoreAssigned(i);
+                    usedCores++;
 
-                    // Memory allocation
-                    // memory requirement between min and max memory per process
+                    // memory allocation using min and max memory per process
                     std::random_device rd;
-                    std::mt19937_64 gen(rd());  // Use 64-bit version of Mersenne Twister
+                    std::mt19937_64 gen(rd());
                     std::uniform_int_distribution<long long> dis(MainConsole::minMemPerProc, MainConsole::maxMemPerProc);
                     long long memRequired = dis(gen);
+                    runningProcess->setMemoryRequired(memRequired);
 
-                    // Check if not exceeding maximum overall memory
-                    if (currMemAlloc + memRequired <= MainConsole::maxOverallMem) {
-                        this->runningRRProcessCount++;
-                        // Check if previous memory blocks are taken
-                        long long availableMemBlockAddr = 0.0;
-
-                        for (int i = 0; i < MemoryManager::memoryBlocks.size(); i++) {
-                            if (MemoryManager::memoryBlocks.at(i) != -1) {
-                                availableMemBlockAddr = MemoryManager::memoryBlocks.at(i);
-                                MemoryManager::memoryBlocks.at(i) = -1;
-                                memoryBlockLoc = i;
-                                break;
-                            }
-                        }
-
-                        // Assign mem-per-proc amount of memory to runningProcess
-                        if (availableMemBlockAddr != 0) {
-                            runningProcess->setMemoryRange(availableMemBlockAddr, memoryBlockLoc, memRequired);
-                        }
-
-                        // Update currMemAlloc
-                        currMemAlloc += memRequired;
-
-                        // Create thread and push into rrThreads vector ??
-                        std::thread processIncrementLine(&Process::incrementLine, runningProcess, coreAssigned);
-                        processIncrementLine.join();
-
-                        // Process has not finished executing
-                        if (runningProcess != nullptr) {
-                            if (runningProcess->getCurrentLine() < runningProcess->getTotalLines()) {
-                                std::lock_guard<std::mutex> lock(schedulerMutex);
-                                // Move process at the end of ready queue
-                                processList.push_back(runningProcess);
-                            }
-                        }
-                        // Free allocated memory
-                        currMemAlloc -= memRequired;
-
+                    long long startAddress = 0;
+                    if (MemoryManager::getInstance()->allocateFlat(memRequired, startAddress)) {
+                        runningProcess->setMemoryRange(startAddress, memRequired);
+                        //std::cout << "[Scheduler] Allocated memory for process " << runningProcess->getName() << std::endl;
                     }
-                    else { // No memory available, push runningProcess back to processList
-                        // Move process at the end of ready queue
-                        processList.push_back(runningProcess);
+                    else {
+                        // memory allocation failed
+                        waitingQueue.push_back(runningProcess);
+                        //std::cout << "[Scheduler] Memory allocation failed for process " << runningProcess->getName() << std::endl;
+                        cores[i] = -1;
+                        usedCores--;
+                        {
+                            std::lock_guard<std::mutex> lock(schedulerMutex);
+                            processList.push_back(runningProcess);
+                        }
+                        i++;
+                        continue;
                     }
 
-                    // Add count of used cores
-                    //usedCores++;
+                    std::thread processThread(&Process::incrementLine, runningProcess, i);
+                    processThread.detach();
+
+                    {
+                        std::lock_guard<std::mutex> lock(runningProcessesMutex);
+                        runningRRProcessList.push_back(runningProcess);
+                    }
+                }
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(runningProcessesMutex);
+                auto it = runningRRProcessList.begin();
+                while (it != runningRRProcessList.end()) {
+                    auto process = *it;
+                    if (process->isFinished()) {
+                        //std::cout << "[Scheduler] Process " << process->getName() << " finished" << std::endl;
+                        int coreIndex = process->getCoreAssigned();
+                        cores[coreIndex] = -1;
+                        usedCores--;
+                        it = runningRRProcessList.erase(it);
+                    }
+                    else {
+                        ++it;
+                    }
                 }
             }
             i++;
             this->schedulerCurCycle = MainConsole::curClockCycle;
-            Sleep(100);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
 }
@@ -259,79 +246,97 @@ void ScheduleWorker::displaySchedule() const {
 }
 
 void ScheduleWorker::testSchedule() {
-
     long long createProcessFreq = MainConsole::batchProcessFreq;
 
     while (!stopTest) {
-        if (ScheduleWorker::schedulerCurCycle != MainConsole::curClockCycle) {
-
-            //std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-            for (long long i = 0; i < createProcessFreq; i++) {
-                time_t currTime;
-                char timeCreation[50];
-                struct tm datetime;
-                time(&currTime);
-                localtime_s(&datetime, &currTime);
-                strftime(timeCreation, sizeof(timeCreation), "%m/%d/%Y %I:%M:%S%p", &datetime);
+        for (long long i = 0; i < createProcessFreq; i++) {
+            time_t currTime;
+            char timeCreation[50];
+            struct tm datetime;
+            time(&currTime);
+            localtime_s(&datetime, &currTime);
+            strftime(timeCreation, sizeof(timeCreation), "%m/%d/%Y %I:%M:%S%p", &datetime);
 
                 std::string timeCreated = (string)timeCreation;
+            std::string processName = "autogen_process" + std::to_string(testProcessID);
 
-                std::string processName = "autogen_process" + std::to_string(testProcessID);
-
-                bool isProcessNameAvailable = true;
-                for (int i = 0; i < MainConsole::processesNameList.size(); i++) {
-                    if (processName == MainConsole::processesNameList[i]) {
-                        isProcessNameAvailable = false;
-                        break;
-                    }
-                }
-
-                if (isProcessNameAvailable) {
-                    std::random_device rd;
-                    std::mt19937_64 gen(rd());  // Use 64-bit version of Mersenne Twister
-                    std::uniform_int_distribution<long long> dis(MainConsole::minimumIns, MainConsole::maximumIns);
-                    long long random_value = dis(gen);
-
-                    shared_ptr<Process> process = make_shared<Process>(processName, testProcessID, random_value, timeCreated);
-
-                    MainConsole::processesNameList.push_back(processName); //Para di matake ulit ung name
-
-                    shared_ptr<BaseScreen> baseScreen = make_shared<BaseScreen>(process, processName);
-                    ConsoleManager::getInstance()->registerScreen(baseScreen);
-
-                    // Check for available cores
-                    for (int i = 0; i < ScheduleWorker::cores.size(); i++) {
-                        if (ScheduleWorker::cores[i] == -1) {
-                            testAnyAvailableCore = true;
-                            break;
-                        }
-                        else {
-                            testAnyAvailableCore = false;
-                        }
-                    }
-
-                    // addProcess if there is available core
-                    if (testAnyAvailableCore) {
-                        if (process != nullptr) {
-                            ScheduleWorker::addProcess(process);
-                        }
-                    }
-                    else { // add to waiting queue if no available core
-                        if (process != nullptr) {
-                            ScheduleWorker::addWaitProcess(process);
-                        }
-                    }
-
-                    testProcessID++;
-                    ScheduleWorker::schedulerCurCycle = MainConsole::curClockCycle;
-                }
-                else {
-                    std::cerr << "Screen name " << processName << " already exists. Please use a different name." << std::endl;
+            bool isProcessNameAvailable = true;
+            for (const auto& existingName : MainConsole::processesNameList) {
+                if (processName == existingName) {
+                    isProcessNameAvailable = false;
+                    break;
                 }
             }
+
+            if (isProcessNameAvailable) {
+                std::random_device rd;
+                std::mt19937_64 gen(rd());
+                std::uniform_int_distribution<long long> dis(MainConsole::minMemPerProc, MainConsole::maxMemPerProc);
+                long long random_value = dis(gen);
+
+
+                std::shared_ptr<Process> process = std::make_shared<Process>(processName, testProcessID, random_value, timeCreated);
+                MainConsole::processesNameList.push_back(processName);
+
+                std::shared_ptr<BaseScreen> baseScreen = std::make_shared<BaseScreen>(process, processName);
+                ConsoleManager::getInstance()->registerScreen(baseScreen);
+
+                //std::cout << "[DEBUG] Created process: " << process->getName() << " with " << random_value << " instructions." << std::endl;
+                ScheduleWorker::addProcess(process);
+                testProcessID++;
+            }
+            //else {
+            //    std::cerr << "Screen name " << processName << " already exists. Please use a different name." << std::endl;
+            //}
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500)); 
+    }
+}
+
+
+bool ScheduleWorker::allocatePagedMemory(std::shared_ptr<Process> process) {
+    int frameSize = MemoryManager::getInstance()->getFrameSize();
+    int numPages = (process->getMemoryUsage() + frameSize - 1) / frameSize;
+    bool allocationSuccessful = true;
+
+    for (int i = 0; i < numPages; ++i) {
+        int pageIndex = MemoryManager::getInstance()->allocatePage();
+        if (pageIndex != -1) {
+            process->addPage(pageIndex);
+        }
+        else {
+            allocationSuccessful = false;
+            break;
         }
     }
-    
+    if (!allocationSuccessful) {
+        process->freePages();
+    }
+    return allocationSuccessful;
+}
 
+
+void ScheduleWorker::allocateMemoryForProcess(std::shared_ptr<Process> process) {
+    if (allocateFlatMemory(process)) {
+        std::cout << "Allocated flat memory for process: " << process->getName() << std::endl;
+    }
+    else if (allocatePagedMemory(process)) {
+        std::cout << "Allocated paged memory for process: " << process->getName() << std::endl;
+    }
+    else {
+        std::cerr << "Memory allocation failed for process: " << process->getName() << std::endl;
+        waitingQueue.push_back(process);  // requeue process
+    }
+}
+
+bool ScheduleWorker::allocateFlatMemory(std::shared_ptr<Process> process) {
+    long long memRequired = process->getMemoryUsage();
+    long long startAddress;
+
+    if (MemoryManager::getInstance()->allocateFlat(memRequired, startAddress)) {
+        process->setMemoryRange(startAddress, memRequired);
+        return true;
+    }
+    return false;
 }

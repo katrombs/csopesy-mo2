@@ -32,6 +32,8 @@ bool testRun = false;
 
 long long MainConsole::minMemPerProc = 0;
 long long MainConsole::maxMemPerProc = 0;
+std::atomic<int> MainConsole::curClockCycle{ 0 };
+
 
 void asciiPrint() {
     string asciiText[6] = { "  _____  _____  ____  _____  ______  _______     __",
@@ -131,7 +133,7 @@ void MainConsole::process() {
                 else if (parameter == "quantum-cycles") {
                     long long cycles = std::stoll(value);
 
-                    if (cycles >= 1 && cycles <= 4294967296) {
+                    if (cycles >= 0 && cycles <= 4294967296) {
                         this->quantumCycles = cycles;
                     }
                     else {
@@ -199,19 +201,19 @@ void MainConsole::process() {
                     }
                 }
                 else if (parameter == "max-overall-mem") {
-                    this->maxOverallMem = std::stoll(value);
+                    MainConsole::maxOverallMem = std::stoll(value);
                 }
                 else if (parameter == "mem-per-frame") {
-                    this->memPerFrame = std::stoi(value);
+                    MainConsole::memPerFrame = std::stoi(value);
                 }
                 //else if (parameter == "mem-per-proc") {
                 //    this->memPerProcess = std::stoll(value);
                 //}
                 else if (parameter == "min-mem-per-proc") {
-                    this->minMemPerProc = std::stoll(value);
-    }
+                    MainConsole::minMemPerProc = std::stoll(value);
+                }
                 else if (parameter == "max-mem-per-proc") {
-                    this->maxMemPerProc = std::stoll(value);
+                    MainConsole::maxMemPerProc = std::stoll(value);
                 }
             }
 
@@ -228,7 +230,17 @@ void MainConsole::process() {
             std::cerr << "max-mem-per-proc: " << MainConsole::maxMemPerProc << std::endl;
 
             MemoryManager memoryManager;
-            memoryManager.prepareMemoryBlocks();
+            MemoryManager::getInstance()->initialize(MainConsole::maxOverallMem, MainConsole::memPerFrame);
+
+            
+            //if (isInitialized) {
+            //    long long overallMemory = this->maxOverallMem;
+            //    int frameSize = this->memPerFrame;
+
+            //    // Initialize MemoryManager after setting the config values
+            //    MemoryManager::getInstance()->initialize(overallMemory, frameSize);
+            //}
+
 
             //std::cout << this->batchProcessFreq << std::endl;
             //std::cout << this->delaysPerExec << std::endl;
@@ -473,4 +485,15 @@ void MainConsole::process() {
             }
         }
     }
+}
+
+void MainConsole::startClock() {
+    std::thread clockThread([]() {
+        while (ConsoleManager::getInstance()->isRunning()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Adjust as needed
+            MainConsole::curClockCycle++;
+            std::cout << "[Clock Thread] Current Clock Cycle: " << MainConsole::curClockCycle.load() << std::endl; // Debug
+        }
+        });
+    clockThread.detach();
 }

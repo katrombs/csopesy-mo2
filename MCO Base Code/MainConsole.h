@@ -14,7 +14,6 @@ public:
 
 	// Other Variables (For Whole System)
 	static long long batchProcessFreq;
-	static int curClockCycle;
 	static int totalNumCores;
 	static String scheduler;
 
@@ -31,6 +30,9 @@ public:
 	static long long maxMemPerProc;
 
 	static std::vector <std::string> processesNameList;
+	static std::atomic<int> curClockCycle;
+	void startClock();
+
 
 private:
 	bool refresh;
